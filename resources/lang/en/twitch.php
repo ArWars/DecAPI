@@ -66,6 +66,8 @@ return [
      */
     'sub_invalid_action' => 'Invalid action specified. Available actions: :actions',
     'sub_needs_authentication' => '%s needs to authenticate to use %sSub (%s sub): %s',
+    'chatter_needs_authentication' => '%s needs to authenticate to use %sChatter (%s chatter): %s',
+    'chatter_count_too_high' => 'Count specified (%d) is higher than the amount of chatters (%d)',
     'sub_count_too_high' => 'Count specified (%d) is higher than the amount of subscribers (%d)',
     'subage_needs_authentication' => '%s needs to authenticate to use subage (Subscription length): %s',
     'subcount_missing_channel' => 'Use ?channel=CHANNEL_NAME or /twitch/subcount/CHANNEL_NAME to get subcount.',

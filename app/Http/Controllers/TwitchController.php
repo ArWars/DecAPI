@@ -42,6 +42,7 @@ class TwitchController extends Controller
      * @var string
      */
     private $subScopes = 'channel:read:subscriptions+user:read:email';
+    private $chatterScopes = 'moderator:read:chatters+user:read:email';
 
     /**
      * @var array
@@ -1302,62 +1303,138 @@ class TwitchController extends Controller
         return Helper::text(implode($separator, $output));
     }
 
+
     /**
      * Picks a random user logged into the specified channel's chat.
      *
      * @param  Request $request
      * @param  string  $channel
-     * @return Response
+     * @return mixed
      */
     public function randomUser(Request $request, $channel = null)
     {
+        if ($request->exists('logout')) {
+            return redirect()->route('auth.twitch.logout');
+        }
+
+        $id = false;
+        $channel = $channel ?: $request->input('channel', null);
+        $amount = intval($request->input('count', 1));
+
+        // Fallback to 1
+        if ($amount < 1) {
+            $amount = 1;
+        }
+
+        $field = $request->input('field', 'user_name');
+        $separator = $request->input('separator', ', ');
+        $needToReAuth = '';
+        $action = 'random';
+
+        if(empty($channel) && Auth::check()) {
+            $user = Auth::user();
+            $userData = $this->api->userById($user->id);
+
+            $data = [
+                'page' => ucfirst($action) . ' user',
+                'route' => route('twitch.' . $action . '_viewer'),
+                'action' => $action,
+                'channel' => $userData['login'],
+            ];
+
+            return view('twitch.userlist', $data);
+        }
+
         if (empty($channel)) {
-            return Helper::text(__('generic.channel_name_required'));
-        }
-
-        // Specific _users_ to exclude.
-        $exclude = $request->input('exclude', '');
-        $exclude = array_map('trim', explode(',', $exclude));
-
-        // "Groups" of chatters to ignore.
-        $ignore = $request->input('ignore', '');
-        $ignore = array_map('trim', explode(',', $ignore));
-
-        $data = $this->twitchApi->get('https://tmi.twitch.tv/group/user/' . $channel . '/chatters', true);
-
-        if (empty($data) || empty($data['chatters'])) {
-            return Helper::text(__('twitch.error_retrieving_chat_users') . $channel);
-        }
-
-        $users = [];
-        foreach ($data['chatters'] as $group => $chatters) {
-            if (!in_array($group, $ignore)) {
-                $users = array_merge($users, $chatters);
+            $nb = new Nightbot($request);
+            if (empty($nb->channel)) {
+                return Helper::text(__('generic.user_channel_name_required'));
             }
+            $channel = $nb->channel['providerId'];
+            $id = true;
         }
 
-        if (empty($users)) {
-            return Helper::text(__('twitch.empty_chat_user_list'));
+        $channel = trim($channel);
+        $reAuth = route('auth.twitch.base') . sprintf('?redirect=randomuser&scopes=%s', $this->chatterScopes);
+        $needToReAuth = sprintf(__('twitch.chatter_needs_authentication'), $id === true ? $nb->channel['displayName'] : $channel, $action, $action, $reAuth);
+
+        try {
+            $channel = $id === true ? User::where('id', $channel)->first() : $this->userByName($channel)->user;
+        } catch (Exception $e) {
+            return Helper::text('An error occurred when trying to find channel or user.');
         }
 
-        foreach ($exclude as $user) {
-            $user = strtolower($user);
-            $search = array_search($user, $users);
+        if (empty($channel)) {
+            return Helper::text($needToReAuth);
+        }
 
-            if ($search === false) {
-                continue;
+        try {
+            $token = Crypt::decrypt($channel->access_token);
+        } catch (DecryptException $e) {
+            // Something weird happened with the encrypted token
+            // request channel owner to re-auth so it's encrypted properly
+            return Helper::text($needToReAuth);
+        }
+
+        if (empty($token)) {
+            return Helper::text($needToReAuth);
+        }
+
+        $scopes = explode('+', $channel->scopes);
+
+        if (!in_array('moderator:read:chatters', $scopes)) {
+            return Helper::text(__('twitch.auth_missing_scopes') . ' moderator:read:chatters. ' . $needToReAuth);
+        }
+
+        $limit = 100;
+        $userId = $channel->id;
+
+        try {
+            $this->api->setToken($token);
+            $data = $this->api->chatters($userId, null, $limit);
+        }
+        catch (TwitchApiException $ex)
+        {
+            return Helper::text('[Error from Twitch API] ' . $ex->getMessage());
+        }
+        catch (Exception $ex)
+        {
+            return Helper::text('[Error from Server] ' . $ex->getMessage());
+            //return Helper::text(__('twitch.error_loading_data_api'));
+        }
+
+        $count = $data['count'];
+
+        if ($amount > $count) {
+            return Helper::text(sprintf(__('twitch.chatter_count_too_high'), $amount, $count));
+        }
+
+        $chatters = $data['chatters']->resolve();
+
+        // Request all chatters if the first batch didn't include all of them.
+        if ($count > $limit && $count > $limit) {
+            $chatters = $this->api->chattersAll($userId);
+        }
+
+        $output = [];
+        // Remove the broadcaster from the list
+        $chatters = array_filter(
+            $chatters,
+            function ($chatter) use ($userId) {
+                return $chatter['user_id'] !== $userId;
             }
+        );
 
-            unset($users[$search]);
-        }
+        shuffle($chatters);
 
-        if (empty($users)) {
-            return Helper::text(__('twitch.empty_chat_user_list'));
-        }
+        $output = array_map(
+            function ($user) use ($field) {
+                return $user[$field];
+            },
+            array_slice($chatters, 0, $amount)
+        );
 
-        shuffle($users);
-        $rand = mt_rand(0, count($users) - 1);
-        return Helper::text($users[$rand]);
+        return Helper::text(implode($separator, $output));
     }
 
     /**

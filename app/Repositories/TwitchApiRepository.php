@@ -96,6 +96,7 @@ class TwitchApiRepository
         return $channels[0];
     }
 
+
     /**
      * Sends a request to the `channel emotes` endpoint: https://dev.twitch.tv/docs/api/reference#get-channel-emotes
      *
@@ -355,6 +356,45 @@ class TwitchApiRepository
                                ->resolve();
     }
 
+
+    /**
+     * Retrieves all the subscribers for a channel.
+     *
+     * @param string $broadcasterId Channel ID
+     *
+     * @return array Array of subscriber objects.
+     * @throws TwitchApiException
+     */
+    public function chattersAll($broadcasterId = '')
+    {
+        $cacheKey = sprintf('TWITCH_CHATTERS_ALL_%s', $broadcasterId);
+        if (Cache::has($cacheKey)) {
+            $cachedChatters = Cache::get($cacheKey);
+            return $cachedChatters;
+        }
+
+        $data = $this->chatters($broadcasterId, null, 100);
+        $chatters = $data['chatters'];
+
+        $count = $chatters->count();
+        $chatting = $chatters->resolve();
+
+        while ($count !== 0)
+        {
+            $cursor = $data['pagination']['cursor'];
+
+            $data = $this->chatters($broadcasterId, null, 100, $cursor);
+            $chats = $data['chatters'];
+            $count = $chats->count();
+
+            $chatting = array_merge($chatting, $chats->resolve());
+        }
+
+        Cache::put($cacheKey, $chatting, config('twitch.cache.chatters_all'));
+
+        return $chatting;
+    }
+
     /**
      * Retrieve a broadcaster's subscribers, or a specific subscription based on user ID.
      * https://dev.twitch.tv/docs/api/reference/#get-broadcaster-subscriptions
@@ -362,8 +402,44 @@ class TwitchApiRepository
      * `setToken()` should be used prior to requesting subscription information.
      *
      * @param string $broadcasterId User ID for channel/broadcaster
-     * @param string $userId User ID for user.
+     * @param string $moderatorId User ID for user.
      * @param int $first Amount of subscriptions to retrieve per request. Max 100.
+     * @param string $after Cursor used for pagination
+     *
+     * @return array
+     * @throws TwitchApiException
+     */
+    public function chatters($broadcasterId = '', $moderatorId = null, $first = 20, $after = null)
+    {
+        $params = [
+            'broadcaster_id' => $broadcasterId,
+            'moderator_id' => $moderatorId ?? $broadcasterId,
+            'first' => $first,
+            'after' => $after,
+        ];
+
+        $request = $this->client->get('/chat/chatters', $params);
+
+        if (isset($request['error'])) {
+            extract($request);
+            throw new TwitchApiException(sprintf('%d: %s - %s', $status, $error, $message), $status);
+        }
+
+        $chatters = collect($request);
+
+        return Resource\Chatters::make($chatters)
+            ->resolve();
+    }
+
+    /**
+     * Retrieve a broadcaster's chatters list, or a specific user based on user ID.
+     * https://dev.twitch.tv/docs/api/reference/#get-broadcaster-subscriptions
+     *
+     * `setToken()` should be used prior to requesting subscription information.
+     *
+     * @param string $broadcasterId User ID for channel/broadcaster
+     * @param string $userId User ID for user.
+     * @param int $first Amount of users to retrieve per request. Max 100.
      * @param string $cursor Cursor used for pagination
      *
      * @return array

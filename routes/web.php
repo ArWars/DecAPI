@@ -183,7 +183,7 @@ Route::group(['prefix' => 'twitch', 'as' => 'twitch.', 'middleware' => ['ratelim
     Route::get('latest_sub/{channel?}', ['as' => 'latest_sub', 'uses' => 'TwitchController@latestSub', 'action' => 'latest'])
         ->where('channel', $channelRegex);
 
-    Route::get('random_user/{channel?}', ['as' => 'random_viewer', 'uses' => 'TwitchController@randomUser'])
+    Route::get('random_user/{channel?}', ['as' => 'random_viewer', 'uses' => 'TwitchController@randomUser', 'action' => 'random'])
         ->where('channel', $channelRegex);
 
     Route::get('subage/{channel?}/{user?}', ['as' => 'subage', 'uses' => 'TwitchController@subAge'])

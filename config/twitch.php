@@ -46,6 +46,11 @@
             'subscriptions_all' => 120,
 
             /**
+             * For fetching all chatters of a broadcaster.
+             */
+            'chatters_all' => 120,
+
+            /**
              * TwitchApiRepository
              *
              * `channel_emotes` specifies minutes via `addMinutes()`.

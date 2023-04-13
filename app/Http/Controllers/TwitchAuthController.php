@@ -36,6 +36,7 @@ class TwitchAuthController extends Controller
         'subcount' => '/twitch/subcount',
         'subpoints' => '/twitch/subpoints',
         'randomsub' => '/twitch/random_sub',
+        'randomuser' => '/twitch/random_user',
         'latestsub' => '/twitch/latest_sub'
     ];
 
@@ -75,6 +76,9 @@ class TwitchAuthController extends Controller
         'user:edit:broadcast',
         'user:read:broadcast',
         'user:read:email',
+
+        // New scopes
+        'moderator:read:chatters',
     ];
 
     /**
