@@ -378,10 +378,10 @@ class TwitchApiRepository
 
         $count = $chatters->count();
         $chatting = $chatters->resolve();
-
-        while ($count !== 0)
+        $cursor = $data['pagination']['cursor'] ?? null;
+        while ($count !== 0 && $cursor !== null)
         {
-            $cursor = $data['pagination']['cursor'];
+            $cursor = $data['pagination']['cursor'] ?? null;
 
             $data = $this->chatters($broadcasterId, null, 100, $cursor);
             $chats = $data['chatters'];
