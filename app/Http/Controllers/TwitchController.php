@@ -1317,6 +1317,16 @@ class TwitchController extends Controller
             return redirect()->route('auth.twitch.logout');
         }
 
+        // Specific _users_ to exclude.
+        $exclude = $request->input('exclude', '');
+        $exclude = array_map('trim', explode(',', $exclude));
+        $exclude = array_map('strtolower', $exclude);
+
+        // "Groups" of chatters to ignore.
+        $ignore = $request->input('ignore', '');
+        $ignore = array_map('trim', explode(',', $ignore));
+        $ignore = array_map('strtolower', $ignore);
+
         $id = false;
         $channel = $channel ?: $request->input('channel', null);
         $amount = intval($request->input('count', 1));
@@ -1381,9 +1391,12 @@ class TwitchController extends Controller
         }
 
         $scopes = explode('+', $channel->scopes);
+        $chatterScopes = explode('+', $this->chatterScopes);
 
-        if (!in_array('moderator:read:chatters', $scopes)) {
-            return Helper::text(__('twitch.auth_missing_scopes') . ' moderator:read:chatters. ' . $needToReAuth);
+        // Compare the scopes we need to the scopes we have.
+        $missingScopes = array_diff($chatterScopes, $scopes);
+        if (!empty($missingScopes)) {
+            return Helper::text(__('twitch.auth_missing_scopes') . ' ' . implode(', ', $missingScopes) . '. ' . $needToReAuth);
         }
 
         $limit = 100;
@@ -1399,9 +1412,24 @@ class TwitchController extends Controller
         }
         catch (Exception $ex)
         {
-            return Helper::text('[Error from Server] ' . $ex->getMessage());
-            //return Helper::text(__('twitch.error_loading_data_api'));
+            return Helper::text(__('twitch.error_loading_data_api'));
         }
+        try{
+            $modData = $this->api->moderators($userId, null, $limit);
+            $moderators = $modData['moderators']->resolve();
+            // Request all chatters if the first batch didn't include all of them.
+            if ($modData['count'] > $limit && $modData['count'] > $limit) {
+                $moderators = $this->api->moderatorsAll($userId);
+            }
+        }catch(Exception $ex){}
+        try{
+            $vipData = $this->api->vips($userId, null, $limit);
+            $vips = $vipData['vips']->resolve();
+            // Request all chatters if the first batch didn't include all of them.
+            if ($vipData['count'] > $limit && $vipData['count'] > $limit) {
+                $vips = $this->api->vipsAll($userId);
+            }
+        }catch(Exception $ex){}
 
         $count = $data['count'];
 
@@ -1415,18 +1443,32 @@ class TwitchController extends Controller
         if ($count > $limit && $count > $limit) {
             $chatters = $this->api->chattersAll($userId);
         }
+        $moderators = $moderators ?? null;
+        $vips = $vips ?? null;
+        $chatters = array_map(function ($chatter) use ($moderators, $vips) {
+            if (isset($moderators) && in_array($chatter['user_id'], array_column($moderators, 'user_id'))) {
+                $chatter['group'] = 'moderator';
+            } else if (isset($vips) && in_array($chatter['user_id'], array_column($vips, 'user_id'))) {
+                $chatter['group'] = 'vip';
+            } else {
+                $chatter['group'] = 'viewer';
+            }
+            return $chatter;
+        }, $chatters);
 
-        $output = [];
-        // Remove the broadcaster from the list
+        // Remove the broadcaster and exclude groups or excluded users from the list
         $chatters = array_filter(
             $chatters,
-            function ($chatter) use ($userId) {
-                return $chatter['user_id'] !== $userId;
+            function ($chatter) use ($exclude, $ignore, $userId) {
+                return !in_array(strtolower($chatter['user_name']), $exclude) && $chatter['user_id'] !== $userId && !in_array(strtolower($chatter['group']), $ignore);
             }
         );
 
-        shuffle($chatters);
+        if (empty($chatters)) {
+            return Helper::text(__('twitch.empty_chat_user_list'));
+        }
 
+        shuffle($chatters);
         $output = array_map(
             function ($user) use ($field) {
                 return $user[$field];

@@ -51,6 +51,16 @@
             'chatters_all' => 120,
 
             /**
+             * For fetching all vips of a broadcaster.
+             */
+            'vips_all' => 120,
+
+            /**
+             * For fetching all moderators of a broadcaster.
+             */
+            'moderators_all' => 120,
+
+            /**
              * TwitchApiRepository
              *
              * `channel_emotes` specifies minutes via `addMinutes()`.

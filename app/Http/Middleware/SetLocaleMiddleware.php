@@ -47,7 +47,7 @@ class SetLocaleMiddleware
             return $locale;
         }
 
-        return 'en';
+        return 'es';
     }
 
     /**
@@ -59,7 +59,7 @@ class SetLocaleMiddleware
      */
     public function handle($request, Closure $next)
     {
-        $locale = $this->getValidLocale($request->input('lang', 'en'));
+        $locale = $this->getValidLocale($request->input('lang', 'es'));
         App::setLocale($locale);
 
         return $next($request);

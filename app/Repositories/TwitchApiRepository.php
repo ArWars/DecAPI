@@ -356,13 +356,193 @@ class TwitchApiRepository
                                ->resolve();
     }
 
+    /**
+     * Retrieve a broadcaster's moderators, or a specific chatter based on user ID.
+     * https://dev.twitch.tv/docs/api/reference/#get-moderators
+     *
+     * `setToken()` should be used prior to requesting chatter information.
+     *
+     * @param string $broadcasterId User ID for channel/broadcaster
+     * @param string $user_id User ID for user.
+     * @param int $first Amount of moderators to retrieve per request. Max 100.
+     * @param string $cursor Cursor used for pagination
+     *
+     * @return array
+     * @throws TwitchApiException
+     */
+    public function moderators($broadcasterId = '', $user_id = null, $first = 20, $cursor = null)
+    {
+        $params = [
+            'broadcaster_id' => $broadcasterId,
+            'user_id' => $user_id,
+            'first' => $first,
+            'after' => $cursor,
+        ];
+
+        $request = $this->client->get('/moderation/moderators', $params);
+
+        if (isset($request['error'])) {
+            extract($request);
+            throw new TwitchApiException(sprintf('%d: %s - %s', $status, $error, $message), $status);
+        }
+
+        $moderators = collect($request);
+
+        return Resource\Moderators::make($moderators)
+            ->resolve();
+    }
 
     /**
-     * Retrieves all the subscribers for a channel.
+     * Retrieves all the moderators for a channel.
      *
      * @param string $broadcasterId Channel ID
      *
-     * @return array Array of subscriber objects.
+     * @return array Array of moderators objects.
+     * @throws TwitchApiException
+     */
+    public function moderatorsAll($broadcasterId = '')
+    {
+        $cacheKey = sprintf('TWITCH_MODERATORS_ALL_%s', $broadcasterId);
+        if (Cache::has($cacheKey)) {
+            return Cache::get($cacheKey);
+        }
+
+        $data = $this->moderators($broadcasterId, null, 100);
+        $moderators = $data['moderators'];
+
+        $count = $moderators->count();
+        $chatting = $moderators->resolve();
+        while ($count !== 0)
+        {
+            $cursor = $data['pagination']['cursor'];
+
+            $data = $this->moderators($broadcasterId, null, 100, $cursor);
+            $moderators = $data['moderators'];
+            $count = $moderators->count();
+
+            $chatting = array_merge($chatting, $moderators->resolve());
+        }
+
+        Cache::put($cacheKey, $chatting, config('twitch.cache.moderators_all'));
+
+        return $chatting;
+    }
+
+    /**
+     * Retrieve a broadcaster's vips, or a specific chatter based on user ID.
+     * https://dev.twitch.tv/docs/api/reference/#get-vips
+     *
+     * `setToken()` should be used prior to requesting chatter information.
+     *
+     * @param string $broadcasterId User ID for channel/broadcaster
+     * @param string $user_id User ID for user.
+     * @param int $first Amount of vips to retrieve per request. Max 100.
+     * @param string $cursor Cursor used for pagination
+     *
+     * @return array
+     * @throws TwitchApiException
+     */
+    public function vips($broadcasterId = '', $user_id = null, $first = 20, $cursor = null)
+    {
+        $params = [
+            'broadcaster_id' => $broadcasterId,
+            'user_id' => $user_id,
+            'first' => $first,
+            'after' => $cursor,
+        ];
+
+        $request = $this->client->get('/moderation/vips', $params);
+
+        if (isset($request['error'])) {
+            extract($request);
+            throw new TwitchApiException(sprintf('%d: %s - %s', $status, $error, $message), $status);
+        }
+
+        $vips = collect($request);
+
+        return Resource\Vips::make($vips)
+            ->resolve();
+    }
+
+    /**
+     * Retrieves all the vips for a channel.
+     *
+     * @param string $broadcasterId Channel ID
+     *
+     * @return array Array of vips objects.
+     * @throws TwitchApiException
+     */
+    public function vipsAll($broadcasterId = '')
+    {
+        $cacheKey = sprintf('TWITCH_VIPS_ALL_%s', $broadcasterId);
+        if (Cache::has($cacheKey)) {
+            $cachedChatters = Cache::get($cacheKey);
+            return $cachedChatters;
+        }
+
+        $data = $this->vips($broadcasterId, null, 100);
+        $vips = $data['vips'];
+
+        $count = $vips->count();
+        $chatting = $vips->resolve();
+        while ($count !== 0)
+        {
+            $cursor = $data['pagination']['cursor'];
+
+            $data = $this->vips($broadcasterId, null, 100, $cursor);
+            $vips = $data['vips'];
+            $count = $vips->count();
+
+            $chatting = array_merge($chatting, $vips->resolve());
+        }
+
+        Cache::put($cacheKey, $chatting, config('twitch.cache.vips_all'));
+
+        return $chatting;
+    }
+
+    /**
+     * Retrieve a broadcaster's chatters, or a specific chatter based on user ID.
+     * https://dev.twitch.tv/docs/api/reference/#get-broadcaster-subscriptions
+     *
+     * `setToken()` should be used prior to requesting chatter information.
+     *
+     * @param string $broadcasterId User ID for channel/broadcaster
+     * @param string $moderatorId User ID for user.
+     * @param int $first Amount of chatters to retrieve per request. Max 100.
+     * @param string $cursor Cursor used for pagination
+     *
+     * @return array
+     * @throws TwitchApiException
+     */
+    public function chatters($broadcasterId = '', $moderatorId = null, $first = 20, $cursor = null)
+    {
+        $params = [
+            'broadcaster_id' => $broadcasterId,
+            'moderator_id' => $moderatorId ?? $broadcasterId,
+            'first' => $first,
+            'after' => $cursor,
+        ];
+
+        $request = $this->client->get('/chat/chatters', $params);
+
+        if (isset($request['error'])) {
+            extract($request);
+            throw new TwitchApiException(sprintf('%d: %s - %s', $status, $error, $message), $status);
+        }
+
+        $chatters = collect($request);
+
+        return Resource\Chatters::make($chatters)
+            ->resolve();
+    }
+
+    /**
+     * Retrieves all the chatters for a channel.
+     *
+     * @param string $broadcasterId Channel ID
+     *
+     * @return array Array of chatters objects.
      * @throws TwitchApiException
      */
     public function chattersAll($broadcasterId = '')
@@ -378,57 +558,20 @@ class TwitchApiRepository
 
         $count = $chatters->count();
         $chatting = $chatters->resolve();
-        $cursor = $data['pagination']['cursor'] ?? null;
-        while ($count !== 0 && $cursor !== null)
+        while ($count !== 0)
         {
-            $cursor = $data['pagination']['cursor'] ?? null;
+            $cursor = $data['pagination']['cursor'];
 
             $data = $this->chatters($broadcasterId, null, 100, $cursor);
-            $chats = $data['chatters'];
-            $count = $chats->count();
+            $chatters = $data['chatters'];
+            $count = $chatters->count();
 
-            $chatting = array_merge($chatting, $chats->resolve());
+            $chatting = array_merge($chatting, $chatters->resolve());
         }
 
         Cache::put($cacheKey, $chatting, config('twitch.cache.chatters_all'));
 
         return $chatting;
-    }
-
-    /**
-     * Retrieve a broadcaster's subscribers, or a specific subscription based on user ID.
-     * https://dev.twitch.tv/docs/api/reference/#get-broadcaster-subscriptions
-     *
-     * `setToken()` should be used prior to requesting subscription information.
-     *
-     * @param string $broadcasterId User ID for channel/broadcaster
-     * @param string $moderatorId User ID for user.
-     * @param int $first Amount of subscriptions to retrieve per request. Max 100.
-     * @param string $after Cursor used for pagination
-     *
-     * @return array
-     * @throws TwitchApiException
-     */
-    public function chatters($broadcasterId = '', $moderatorId = null, $first = 20, $after = null)
-    {
-        $params = [
-            'broadcaster_id' => $broadcasterId,
-            'moderator_id' => $moderatorId ?? $broadcasterId,
-            'first' => $first,
-            'after' => $after,
-        ];
-
-        $request = $this->client->get('/chat/chatters', $params);
-
-        if (isset($request['error'])) {
-            extract($request);
-            throw new TwitchApiException(sprintf('%d: %s - %s', $status, $error, $message), $status);
-        }
-
-        $chatters = collect($request);
-
-        return Resource\Chatters::make($chatters)
-            ->resolve();
     }
 
     /**

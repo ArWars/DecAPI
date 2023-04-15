@@ -79,6 +79,8 @@ class TwitchAuthController extends Controller
 
         // New scopes
         'moderator:read:chatters',
+        'channel:manage:vips',
+        'channel:manage:moderators',
     ];
 
     /**
